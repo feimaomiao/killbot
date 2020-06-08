@@ -1,0 +1,2 @@
+# killbot
+Albion Discord Killbot
