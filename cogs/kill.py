@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import logging
@@ -39,11 +40,25 @@ formatteditems = requests.get(
 ).json()
 del requests
 
+#get tier of items
+def loadtier(i):
+    tier=  match(r"T([1-8]).*", i).group(1)
+    try:
+        enchantment = match(r".+@([1-3])", i).group(1)
+    except AttributeError: 
+        enchantment = 0
+    if not tier:
+        return ""
+    if not enchantment:
+        enchantment = 0
+    return f"[{tier}.{enchantment}]"
+
+
 
 # Return item name from given unique key
 def items_get(items):
     try:
-        return [
+        return loadtier(items) + [
             i["LocalizedNames"]["EN-US"]
             for i in formatteditems
             if i["UniqueName"] == items
@@ -94,10 +109,13 @@ async def get_image(link, session):
         # -> use image module to load the image from bytesio object
         # -> resize the image object to 180x180 size
         # -> convert the image to transparent
-        return convert_to_transparent(
-            img.open(BytesIO(await resp.content.read())).resize(
-                (180, 180), img.ANTIALIAS), BACKGROUND)
-
+        try:
+            return convert_to_transparent(
+                img.open(BytesIO(await resp.content.read())).resize(
+                    (180, 180), img.ANTIALIAS), BACKGROUND)
+        except Exception as e:
+            await asyncio.sleep(1)
+            return await get_image(link, session)
 
 # determines gear worth
 async def calculate_gearworth(person, onlygear=False):
@@ -401,13 +419,6 @@ class kill:
         # return joins
         return ("\n".join(fn), "\n".join(guild), "\n".join(perc))
 
-    @property
-    def victiminv(self):
-        # returns victim inventory
-        return "\n".join((items_get(i["Type"])
-                          for i in self.victim["Inventory"]
-                          if i is not None))
-
     async def embed(self):
         await self.draw()
         # Create discord embed object
@@ -425,7 +436,7 @@ class kill:
         if self.assistlist == ("", "", ""):
             # Forcibly set assistlist to a tuple
             self.assistlist = (self.killer["Name"], self.killer["GuildName"],
-                               "100[100%")
+                               "100[100%]")
         # Add in values for the embed
         self.embed.add_field(name="Killers", value=self.assistlist[0])
         self.embed.add_field(name="Guild",
@@ -444,7 +455,9 @@ class kill:
                                       if i is not None)),
                                  inline=True)
             self.embed.add_field(name="Victim's Inventory:",
-                                 value=self.victiminv,
+                                 value="\n".join((items_get(i["Type"])
+                          for i in self.victim["Inventory"]
+                          if i is not None)),
                                  inline=True)
         # returns gear worth
         gw = str(round(await calculate_gearworth(self.victim)))

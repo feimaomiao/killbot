@@ -45,26 +45,31 @@ async def on_ready():
 # set loop to 5 minutes per update
 @tasks.loop(minutes=5)
 async def loadimages():
-    if not kb.set:
-        await kb.start()
-    for kills in await kb.newkills():
-        k = kill(kills)
-        embedder, fileobj, fileloc = await k.embed()
-        # loop through guilds
-        for guilds in [c for c in configs if c != "GENERAL"]:
-            if kb.qualify(configs[guilds], kills):
-                # load send channel
-                channel = discord.utils.find(
-                    lambda x: x.id == configs[guilds]["sendchannel"],
-                    bot.get_all_channels())
-                await channel.trigger_typing()
-                await channel.send(file=fileobj, embed=embedder)
-                # fileobj is singleload only
-                embedder, fileobj, fileloc = k.reload()
-        # Deletes file
-        os.remove(fileloc)
-        print("File deleted")
-    return
+    try:
+        if not kb.set:
+            await kb.start()
+        for kills in await kb.newkills():
+            k = kill(kills)
+            embedder, fileobj, fileloc = await k.embed()
+            # loop through guilds
+            for guilds in [c for c in configs if c != "GENERAL"]:
+                if kb.qualify(configs[guilds], kills):
+                    # load send channel
+                    channel = discord.utils.find(
+                        lambda x: x.id == int(configs[guilds]["sendchannel"]),
+                        bot.get_all_channels())
+                    print(configs[guilds]["sendchannel"])
+                    print(channel)
+                    await channel.trigger_typing()
+                    await channel.send(file=fileobj, embed=embedder)
+                    # fileobj is singleload only
+                    embedder, fileobj, fileloc = k.reload()
+            # Deletes file
+            os.remove(fileloc)
+            print("File deleted")
+        return
+    except Exception as e:
+        print(e)
 
 
 # Send help
@@ -131,7 +136,7 @@ def updateconfigs(currconfigs):
     global last_id
     requests.delete(f"{JSONLINK}/{last_id}")
     send = requests.post(JSONLINK,
-                         json=json.loads(json.dumps(currconfigs)),
+                         json=currconfigs,
                          headers={"content-type": "application/json"})
     configsonline = requests.get(JSONLINK).json()
     configs = dc({
@@ -152,7 +157,6 @@ async def channel(client, channel_name):
     if len(channel) == 0:
         channel = difflib.get_close_matches(
             channel_name, [i.name for i in client.guild.channels])
-        print(channel)
         channel = [
             i for i in client.guild.text_channels if i.name == channel[0]
         ]
@@ -162,8 +166,9 @@ async def channel(client, channel_name):
             "Whoops! I cannot find this server, are you sure you entered the right name?\nYou can also enter a channel id by putting the channel id in!"
         )
     else:
+        print(channel[0].id)
         # set configs id
-        configs[f"a{client.guild.id}"]["sendchannel"] = channel[0].id
+        configs[f"a{client.guild.id}"]["sendchannel"] = str(channel[0].id)
         await channel[0].trigger_typing()
         # make a test send
         await client.send(
@@ -178,12 +183,6 @@ async def channel(client, channel_name):
 # Track a player or guild
 @bot.command(name="track")
 async def track(client, flwtype, *name):
-    # check if a sendchannel is set
-    if not configs[f'a{client.guild.id}']["sendchannel"]:
-        await client.send(
-            "Please first designate a send channel using the command `>channel`!"
-        )
-        return
     # follow type must be guild or player
     if flwtype not in ["guilds", "players", "guild", "player"]:
         await client.send(
@@ -258,6 +257,11 @@ async def setminfame(client, fame, *others):
     if not fame.isdigit():
         await client.send("Make sure the fame is an integer!")
         return
+    if int(fame) < 1000000:
+        await client.send(
+            "To prevent spam and preserve operating power for the killbot, minfame must be at least 1000000!"
+        )
+        fame = "1000000"
     configs[f'a{client.guild.id}']["minimumkillfame"] = int(fame)
     await client.send("Minimum kill fame is set to {}".format(fame))
     generalconfigs()
@@ -308,10 +312,7 @@ def generalconfigs():
 async def list_following(client):
     nl = "\n"
     lss = f"```css{nl*2}Following Guilds:{nl}{nl.join([i for i in configs['a' +str(client.guild.id)]['trackingguildname']])}{nl*2}Following players:{nl}{nl.join([i for i in configs['a' +str(client.guild.id)]['trackingplayername']])}{nl*2}Minimum Fame for sending: {configs[f'a{client.guild.id}']['minimumkillfame']}```"
-    channel = discord.utils.find(
-        lambda x: x.id == configs[f'a{client.guild.id}']["sendchannel"],
-        bot.get_all_channels())
-    return await channel.send(lss)
+    return await client.send(lss)
 
 
 generalconfigs()
