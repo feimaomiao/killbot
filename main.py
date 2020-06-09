@@ -53,13 +53,14 @@ async def loadimages():
             embedder, fileobj, fileloc = await k.embed()
             # loop through guilds
             for guilds in [c for c in configs if c != "GENERAL"]:
+                if configs[guilds]["sendchannel"] == "0":
+                    continue
                 if kb.qualify(configs[guilds], kills):
                     # load send channel
                     channel = discord.utils.find(
                         lambda x: x.id == int(configs[guilds]["sendchannel"]),
                         bot.get_all_channels())
                     print(configs[guilds]["sendchannel"])
-                    print(channel)
                     await channel.trigger_typing()
                     await channel.send(file=fileobj, embed=embedder)
                     # fileobj is singleload only
@@ -70,6 +71,7 @@ async def loadimages():
         return
     except Exception as e:
         print(e)
+    print("Finished")
 
 
 # Send help
@@ -166,17 +168,20 @@ async def channel(client, channel_name):
             "Whoops! I cannot find this server, are you sure you entered the right name?\nYou can also enter a channel id by putting the channel id in!"
         )
     else:
-        print(channel[0].id)
-        # set configs id
-        configs[f"a{client.guild.id}"]["sendchannel"] = str(channel[0].id)
-        await channel[0].trigger_typing()
-        # make a test send
-        await client.send(
-            "If you do not see the test message, you probably have to fix the channel settings!"
-        )
-        await channel[0].send(
-            "This is a test\nIf you see this message, I have the permission to send messages in this channel!"
-        )
+        try:
+            await channel[0].trigger_typing()
+            # set configs id
+            configs[f"a{client.guild.id}"]["sendchannel"] = str(channel[0].id)
+            # make a test send
+            await client.send(
+                "If you do not see the test message, you probably have to fix the channel settings!"
+            )
+            await channel[0].send(
+                "This is a test\nIf you see this message, I have the permission to send messages in this channel!"
+            )
+        except discord.errors.Forbidden:
+            await client.send("Channel cannot be set as I do not have the permission on that channel!\nSend channel is currently configured to this channel")
+            configs[f"a{client.guild.id}"]["sendchannel"] = str(client.channel.id)
     return generalconfigs()
 
 
