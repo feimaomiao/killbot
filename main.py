@@ -68,10 +68,10 @@ async def loadimages():
             # Deletes file
             os.remove(fileloc)
             print("File deleted")
+        print("Finished")
         return
     except Exception as e:
         print(e)
-    print("Finished")
 
 
 # Send help
@@ -180,8 +180,11 @@ async def channel(client, channel_name):
                 "This is a test\nIf you see this message, I have the permission to send messages in this channel!"
             )
         except discord.errors.Forbidden:
-            await client.send("Channel cannot be set as I do not have the permission on that channel!\nSend channel is currently configured to this channel")
-            configs[f"a{client.guild.id}"]["sendchannel"] = str(client.channel.id)
+            await client.send(
+                "Channel cannot be set as I do not have the permission on that channel!\nSend channel is currently configured to this channel"
+            )
+            configs[f"a{client.guild.id}"]["sendchannel"] = str(
+                client.channel.id)
     return generalconfigs()
 
 
@@ -245,9 +248,9 @@ async def untrack(client, flwtype, *name):
             "players", name)
         if found and trackingid in configs[
                 "a" + str(client.guild.id)]["trackingplayer"]:
-            guildloc["trackingguild"].pop(
+            guildloc["trackingplayer"].pop(
                 guildloc["trackingplayer"].index(trackingid))
-            guildloc["trackingguild"].pop(
+            guildloc["trackingplayername"].pop(
                 guildloc["trackingplayername"].index(trackingname))
             message = f"{trackingname} is removed from your tracking list"
         else:
@@ -271,7 +274,6 @@ async def setminfame(client, fame, *others):
     await client.send("Minimum kill fame is set to {}".format(fame))
     generalconfigs()
     return
-
 
 # load general configurations
 def generalconfigs():

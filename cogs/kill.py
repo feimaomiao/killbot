@@ -7,7 +7,7 @@ import time
 from collections import Counter
 from copy import deepcopy as dc
 from io import BytesIO
-from re import match
+from re import match, sub
 from statistics import mean as avg
 
 import aiohttp
@@ -38,14 +38,25 @@ infotext = imgfont.truetype("fonts/info.ttf", 35)
 formatteditems = requests.get(
     "https://raw.githubusercontent.com/broderickhyman/ao-bin-dumps/master/formatted/items.json"
 ).json()
-del requests
+
+
+def substitute(name):
+    ls = [
+        "Novice's ", "Journeyman's ", "Adept's ", "Expert's ", "Master's ",
+        "Grandmaster's ", "Elder's ", "Uncommon ", "Rare ", "Exceptional "
+    ]
+    for items in ls:
+        name = sub(items, "", name)
+    return name
+
 
 #get tier of items
 def loadtier(i):
-    tier=  match(r"T([1-8]).*", i).group(1)
+    tier = None
     try:
+        tier = match(r"T([1-8]).*", i).group(1)
         enchantment = match(r".+@([1-3])", i).group(1)
-    except AttributeError: 
+    except AttributeError:
         enchantment = 0
     if not tier:
         return ""
@@ -54,16 +65,16 @@ def loadtier(i):
     return f"[{tier}.{enchantment}]"
 
 
-
 # Return item name from given unique key
 def items_get(items):
     try:
-        return loadtier(items) + [
-            i["LocalizedNames"]["EN-US"]
-            for i in formatteditems
-            if i["UniqueName"] == items
-        ][0]
-    except:
+        return substitute(
+            loadtier(items) + [
+                i["LocalizedNames"]["EN-US"]
+                for i in formatteditems
+                if i["UniqueName"] == str(items)
+            ][0])
+    except Exception as e:
         return items
 
 
@@ -114,11 +125,13 @@ async def get_image(link, session):
                 img.open(BytesIO(await resp.content.read())).resize(
                     (180, 180), img.ANTIALIAS), BACKGROUND)
         except Exception as e:
+            print("Image error", e)
             await asyncio.sleep(1)
             return await get_image(link, session)
 
+
 # determines gear worth
-async def calculate_gearworth(person, onlygear=False):
+async def calculate_gearworth(person, session, onlygear=False):
 
     # Function to get the average price from Lymhurst, Martlock, Bridgewatch, FortSterling and Thetford
     def _getaverage(x, y):
@@ -152,9 +165,13 @@ async def calculate_gearworth(person, onlygear=False):
                 loi.append((items["Type"], items["Quality"]))
     # looping through items in counter
     for items, count in Counter(loi).items():
-        async with aiohttp.ClientSession() as session:
+        try:
             async with session.get(getlink(items[0])) as resp:
                 valueslist = await resp.json()
+        except aiohttp.client_exceptions.ContentTypeError:
+            logging.warning("aiohttp.client_exceptions.ContentTypeError, gearworth error")
+            await asyncio.sleep(5)
+            return await calculate_gearworth(person, session)
         try:
             total += _getaverage(valueslist, items[1]) * count
         except KeyError:
@@ -257,7 +274,8 @@ async def drawplayer(player,
                      font=systemfont,
                      fill=WHITE)
     # Calculate their gear worth
-    gearworth = await calculate_gearworth(player, True)
+    async with aiohttp.ClientSession() as session:
+        gearworth = await calculate_gearworth(player, session, True)
     # Set IP
     width, height = drawimg.textsize("IP: {}".format(
         round(player["AverageItemPower"], 2)),
@@ -446,7 +464,9 @@ class kill:
                              value=self.assistlist[2],
                              inline=True)
         # check if victim's inventory is empty
-        if self.victiminv != "":
+        if "\n".join((items_get(i["Type"])
+                      for i in self.victim["Inventory"]
+                      if i is not None)) != "":
             # adds embed field for victim's inventory
             self.embed.add_field(name="Amount",
                                  value="\n".join(
@@ -455,12 +475,14 @@ class kill:
                                       if i is not None)),
                                  inline=True)
             self.embed.add_field(name="Victim's Inventory:",
-                                 value="\n".join((items_get(i["Type"])
-                          for i in self.victim["Inventory"]
-                          if i is not None)),
+                                 value="\n".join(
+                                     (items_get(i["Type"])
+                                      for i in self.victim["Inventory"]
+                                      if i is not None)),
                                  inline=True)
         # returns gear worth
-        gw = str(round(await calculate_gearworth(self.victim)))
+        async with aiohttp.ClientSession() as session:
+            gw = str(round(await calculate_gearworth(self.victim, session)))
         # adds embed field for the total gear worth.
         self.embed.add_field(name="Estimated Victim's Total Worth:",
                              value=gw,
