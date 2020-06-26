@@ -44,11 +44,9 @@ class killboard:
         async with client.get(_link(offset)) as resp:
             if resp.status != 200:
                 await asyncio.sleep(1)
-                logging.warning(
-                    "Time: {0:20} Status Code Error: {1}".format(
-                        datetime.datetime.now().strftime("%x %X:%f"),
-                        resp.status))
-                return await killboard._connect(offset ,client)
+                logging.warning("Time: {0:20} Status Code Error: {1}".format(
+                    datetime.datetime.now().strftime("%x %X:%f"), resp.status))
+                return await killboard._connect(offset, client)
             return await resp.json()
 
     @property
@@ -91,18 +89,18 @@ class killboard:
                 if (50 * count + 1) > 1000:
                     print(20)
                     break
-                elif len(self.diff) < (30* count):
+                elif len(self.diff) < (30 * count):
                     print("97 break: ", count)
                     break
         # Set old to the latest kills
         print("All differences found")
         print("Total: {}".format(len(self.diff)))
         if len(self.old) >= 2000:
-            self.old = self.old[len(self.old)-2000::1]
+            self.old = self.old[len(self.old) - 2000::1]
         if not self.ready:
             self.ready = True
             return []
-        return sorted(self.diff, key = lambda x: int(x["EventId"]))
+        return sorted(self.diff, key=lambda x: int(x["EventId"]))
 
     @staticmethod
     async def search(tpe, name):
@@ -153,5 +151,3 @@ class killboard:
             # the total kill fame is larger than the lowest set kill fame in the guild
             kill["TotalVictimKillFame"] >= guild["minimumkillfame"]
         ])
-
-

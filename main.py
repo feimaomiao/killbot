@@ -275,6 +275,7 @@ async def setminfame(client, fame, *others):
     generalconfigs()
     return
 
+
 # load general configurations
 def generalconfigs():
     # Makes the following key unique

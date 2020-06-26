@@ -169,7 +169,8 @@ async def calculate_gearworth(person, session, onlygear=False):
             async with session.get(getlink(items[0])) as resp:
                 valueslist = await resp.json()
         except aiohttp.client_exceptions.ContentTypeError:
-            logging.warning("aiohttp.client_exceptions.ContentTypeError, gearworth error")
+            logging.warning(
+                "aiohttp.client_exceptions.ContentTypeError, gearworth error")
             await asyncio.sleep(5)
             return await calculate_gearworth(person, session)
         try:
