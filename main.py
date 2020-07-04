@@ -33,6 +33,9 @@ global last_id
 last_id = configsonline[0]["_id"]
 with open("default_cfg_template.json") as defcfgfile:
     defaultconfigs = json.load(defcfgfile)
+global followingparties
+followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
+    "trackingplayer"]
 
 
 @bot.event
@@ -50,28 +53,29 @@ async def loadimages():
             await kb.start()
         for kills in await kb.newkills():
             k = kill(kills)
-            embedder, fileobj, fileloc = await k.embed()
+            await k.draw()
             # loop through guilds
             for guilds in [c for c in configs if c != "GENERAL"]:
                 if configs[guilds]["sendchannel"] == "0":
                     continue
-                if kb.qualify(configs[guilds], kills):
+                if kb.qualify(configs[guilds], dc(kills)):
+                    embedder, fileobj, fileloc = k.create_embed(
+                        configs[guilds]["trackingplayer"] +
+                        configs[guilds]["trackingguild"])
                     # load send channel
                     channel = discord.utils.find(
                         lambda x: x.id == int(configs[guilds]["sendchannel"]),
                         bot.get_all_channels())
-                    print(configs[guilds]["sendchannel"])
                     await channel.trigger_typing()
                     await channel.send(file=fileobj, embed=embedder)
-                    # fileobj is singleload only
-                    embedder, fileobj, fileloc = k.reload()
+            del k
             # Deletes file
             os.remove(fileloc)
             print("File deleted")
         print("Finished")
         return
     except Exception as e:
-        print(e)
+        print(type(e), e)
 
 
 # Send help
@@ -278,6 +282,7 @@ async def setminfame(client, fame, *others):
 
 # load general configurations
 def generalconfigs():
+    global followingparties
     # Makes the following key unique
     for k, v in configs.items():
         if k == "GENERAL":
@@ -311,6 +316,9 @@ def generalconfigs():
         "trackingguild"]
     # Set the minimum kill fame of the killboard
     kb.minkillfame = configs["GENERAL"]["minimumkillfame"]
+    # update the following parties for the colors!
+    followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
+        "trackingplayer"]
     # dump everything into the configs file
     return updateconfigs(configs)
 
