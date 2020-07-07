@@ -17,8 +17,10 @@ class killboard:
         self.tracking = []
         # variable minkillfame that determines a large kill to be displayed
         self.minkillfame = 10000
-        #set false value
-        self.ready = False
+        #set a start time
+        self.starttime = datetime.datetime.now()
+        # set a latest timer
+        self.latest = 0
 
     async def start(self):
         # set a old example for comparison
@@ -28,6 +30,7 @@ class killboard:
         # initialise the new variable
         self.new = dc(self.old)
         self.set = True
+        self.latest = max([i["EventId"] for i in self.old])
         print("objcreated")
         return
 
@@ -39,11 +42,14 @@ class killboard:
         _link = lambda x: "https://gameinfo.albiononline.com/api/gameinfo/events?limit=51&offset={}".format(
             x)
 
+        if count > 9:
+            count = 9
         # using the requests module to get a connection from the link
         # offset can be adjusted if more than 51 kills occured between updates
         async with client.get(_link(offset)) as resp:
             if resp.status != 200:
-                await asyncio.sleep(count + 1)
+                await asyncio.sleep(count)
+                print("offset: {}".format(offset))
                 logging.warning("Time: {0:20} Status Code Error: {1}".format(
                     datetime.datetime.now().strftime("%x %X:%f"), resp.status))
                 return await killboard._connect(offset, client, count + 1)
@@ -69,6 +75,7 @@ class killboard:
         # initialise the count variable for later offsets
         count = 0
         self.diff = self.new_values
+        temp = self.new
         """
         to avoid repetition in the future
         Both self.old and self.new are lists(json data from the website)
@@ -89,18 +96,18 @@ class killboard:
                     self.old.sort(key=lambda x: int(x["EventId"]))
                     if (50 * count + 1) > 1000:
                         break
-                    elif len(self.diff) < (30 * count):
+                    elif min([i["EventId"] for i in self.new]) < self.latest:
                         break
                 except Exception as e:
                     print(type(e), e.message)
         # Set old to the latest kills
         print("Total: {}".format(len(self.diff)))
-        if len(self.old) >= 2000:
-            self.old = self.old[len(self.old) - 2000::1]
-        if not self.ready:
-            self.ready = True
-            return []
-        return sorted(self.diff, key=lambda x: int(x["EventId"]))
+        self.latest = max((i["EventId"] for i in self.diff))
+        self.old = self.diff
+        return list({
+            v["EventId"]: v
+            for v in sorted(self.diff, key=lambda x: int(x["EventId"]))
+        }.values())
 
     @staticmethod
     async def search(tpe, name):
@@ -126,7 +133,7 @@ class killboard:
             return await killboard.search(tpe, name)
 
     def isassist(self, kill):
-        for parts in kill["Participants"]:
+        for parts in [i for i in kill["Participants"] if i["DamageDone"] > 0]:
             if parts["Id"] in self.tracking or parts["GuildId"] in self.tracking:
                 return True
 
@@ -140,11 +147,13 @@ class killboard:
                    [self.isassist(kill)])
 
     async def newkills(self):
-        return [i for i in await self.load() if self.insearch(i)]
+        p = [i for i in await self.load() if self.insearch(i)]
+        print(f"Total: {len(p)}")
+        return p
 
     @staticmethod
     def inguildassist(kill, guild):
-        for parts in kill["Participants"]:
+        for parts in [i for i in kill["Participants"] if i["DamageDone"] > 0]:
             if parts["Id"] in guild["trackingplayer"]:
                 return True
             if parts["GuildId"] in guild["trackingguild"]:

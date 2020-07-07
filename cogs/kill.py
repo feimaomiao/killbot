@@ -3,7 +3,7 @@ import datetime
 import json
 import logging
 import os
-import time
+from time import time as timetime
 from collections import Counter
 from copy import deepcopy as dc
 from io import BytesIO
@@ -15,13 +15,12 @@ from statistics import mean as avg
 import aiohttp
 import requests
 from bs4 import BeautifulSoup as bs
+from discord import Embed as discordembed
+from discord import File as discordfile
 from lzl import lzfloat, lzint, lzlist
 from PIL import Image as img
 from PIL import ImageDraw as imgdraw
 from PIL import ImageFont as imgfont
-
-from discord import Embed as discordembed
-from discord import File as discordfile
 
 # Set color variables
 BACKGROUND = (10, 10, 10)
@@ -50,11 +49,35 @@ with open("data.json") as file:
 with open("possibleprefixes.json") as file:
     prefixes = json.load(file)
 
+
 # substituting useless items in the item name
 def substitute(name):
+    # Crystal league tokens
+    m = match(r"T4_TOKEN_CRYSTALLEAGUE_LVL_(\d{1,2})_S(\d{1,2})", name)
+    # Trade missions
+    k = match(r"QUESTITEM_CARAVAN_TRADEPACK_([A-Z]{5,8})_(LIGHT|MEDIUM|HEAVY)",
+              name)
+    # HCE Maps
+    h = match(r"QUESTITEM_EXP_TOKEN_D(\d{1,2})_T\d.+", name)
+    if m:
+        return f"S{m.group(2)} Crystal League Token (Lvl. {m.group(1)})"
+    elif k:
+        location = {
+            "SWAMP": "Thetford",
+            "FOREST": "Lymhurst",
+            "STEPPE": "Bridgewatch",
+            "HIGHLAND": "Martlock",
+            "MOUNTAIN": "Fort Sterling"
+        }[k.group(1)]
+        tier = {"LIGHT": 1, "MEDIUM": 2, "HEAVY": 3}[k.group(2)]
+        return f"Tier {tier} {location}'s Unsuspicious Box"
+    elif h:
+        return f"HCE Map (Lvl. {h.group(1)})"
     ls = [
         "Novice's ", "Journeyman's ", "Adept's ", "Expert's ", "Master's ",
-        "Grandmaster's ", "Elder's ", "Uncommon ", "Rare ", "Exceptional "
+        "Grandmaster's ", "Elder's ", "Uncommon ", "Rare ", "Exceptional ",
+        "Novice ", "Journeyman ", "Adept ", "Expert ", "Master ",
+        "Grandmaster ", "Elder ", "Major ", "Minor ", "Danglemouth "
     ]
     for items in ls:
         name = sub(items, "", name)
@@ -77,16 +100,22 @@ def loadtier(i):
 
 
 # Return item name from given unique key
-def items_get(items):
+def items_get(items, quality=1):
     try:
-        return substitute(
-            loadtier(items) + [
-                i["LocalizedNames"]["EN-US"]
-                for i in formatteditems
-                if i["UniqueName"] == str(items)
-            ][0])
+        return loadtier(items) + substitute([
+            i["LocalizedNames"]["EN-US"]
+            for i in formatteditems
+            if i["UniqueName"] == str(items)
+        ][0]) + '{}'.format({
+            0: "",
+            1: "(NM)",
+            2: "(GD)",
+            3: "(OT)",
+            4: "(EX)",
+            5: "(MP)"
+        }[quality])
     except Exception as e:
-        return items
+        return substitute(str(items))
 
 
 # convert the transparent nodes into orange nodes like the background
@@ -125,8 +154,8 @@ async def is_two_main_hand(name):
 
 
 # async function to get image from the given link
-async def get_image(link, item, session):
-    async with session.get(link + item + ".png") as resp:
+async def get_image(link, item, session, quality=1):
+    async with session.get(link + item + f".png?quality={quality}") as resp:
         # use bytesio object to load the respond conetent from online∂
         # -> use image module to load the image from bytesio object
         # -> resize the image object to 180x180 size
@@ -142,33 +171,40 @@ async def get_image(link, item, session):
             return await get_image(link, item, session)
 
 
-async def get_iw_json(items, session):
+async def get_iw_json(items, session, count=0):
     # Lambda function to return the api link
-    getlink = lambda x: "https://www.albion-online-data.com/api/v2/stats/prices/" + x + "?locations=Lymhurst,Martlock,Bridgewatch,FortSterling,Thetford"
+    getlink = lambda x: "https://www.albion-online-data.com/api/v2/stats/prices/" + x + "?locations=Lymhurst,Martlock,Bridgewatch,FortSterling,Thetford,Caerleon"
     try:
         async with session.get(getlink(items)) as resp:
             return await resp.json()
     # happens when the returned item is 404 error
     except aiohttp.client_exceptions.ContentTypeError:
-        logging.warning("Gearworth Error {}".format(items))
+        if count == 0:
+            logging.warning("Gearworth Error {}".format(items))
         await asyncio.sleep(1)
-        return await get_iw_json(items, session)
+        return await get_iw_json(items, session, count + 1)
+
+
+# Function to get the average price from Lymhurst, Martlock, Bridgewatch, FortSterling and Thetford
+def _getaverage(x, y):
+    fnl = []
+    for i in x:
+        if i['quality'] == y and i["sell_price_min"] != 0:
+            fnl.append(i["sell_price_min"])
+    if len(fnl) == 0:
+        fnl = [i["sell_price_min"] for i in x if i["sell_price_min"] != 0]
+    # when there is only one entry point
+    if len(fnl) == 1:
+        return fnl[0]
+    # when everything is 0
+    elif len(fnl) == 0:
+        return 0
+    # Use list comprehension to remove extremes from the list, also use the statistics.mean function to get averages from the data.
+    return avg([i for i in fnl if i <= 3 * avg(sorted(fnl)[:-1])])
 
 
 # determines gear worth
-async def calculate_gearworth(person, session, onlygear=False):
-
-    # Function to get the average price from Lymhurst, Martlock, Bridgewatch, FortSterling and Thetford
-    def _getaverage(x, y):
-        fnl = []
-        for i in x:
-            if i['quality'] == y:
-                fnl.append(i["sell_price_min"])
-        if len(fnl) != 5:
-            fnl = [i["sell_price_min"] for i in x if i["quality"] == 1]
-        # Use list comprehension to remove extremes from the list, also use the statistics.mean function to get averages from the data.
-        return avg([i for i in fnl if i <= 3 * avg(sorted(fnl)[:-1])])
-
+async def calculate_gearworth(person, session):
     # initialise list of inventory and total value
     loi = []
     total = 0
@@ -177,19 +213,11 @@ async def calculate_gearworth(person, session, onlygear=False):
         # Gear is sometimes None if the user did not use the value
         if gear is not None:
             loi.append((gear["Type"], gear['Quality']))
-    if not onlygear:
-        # loop through items in victims inventory
-        for items in person["Inventory"]:
-            # even if there is nothing in the inventory, it would be an array of none objects
-            if items is None:
-                continue
-            # Count would also count into the
-            for count in range(items["Count"]):
-                loi.append((items["Type"], items["Quality"]))
     # looping through items in counter
     for items, count in Counter(loi).items():
         try:
-            total += _getaverage(await get_iw_json(items[0], session)) * count
+            total += _getaverage(await get_iw_json(items[0], session),
+                                 items[1]) * count
         except KeyError:
             logging.info("Time: {0:20} KeyError: Item {1}".format(
                 datetime.datetime.now().strftime("%x %X:%f"), items[0]))
@@ -250,7 +278,8 @@ async def drawplayer(player,
             if equipments[item]:
                 # downloads image
                 loadingimg = await get_image(_baseimagelink,
-                                             equipments[item]["Type"], session)
+                                             equipments[item]["Type"], session,
+                                             equipments[item]["Quality"])
                 # puts the image on the background using the given data
                 playerimg.paste(loadingimg, imgspace)
                 # put the count on the pasted image using the given data
@@ -267,13 +296,10 @@ async def drawplayer(player,
     if twohand and equipments["MainHand"]:
         # downloads the image again from the database
         async with aiohttp.ClientSession() as session:
-            async with session.get(_baseimagelink +
-                                   equipments["MainHand"]["Type"] +
-                                   ".png") as resp:
-                content = img.open(BytesIO(await resp.content.read())).resize(
-                    (180, 180), img.ANTIALIAS)
-                content = convert_to_transparent(content, BACKGROUND)
-                content.putalpha(100)
+            content = await get_image(_baseimagelink,
+                                      equipments["MainHand"]["Type"], session,
+                                      equipments["MainHand"]["Count"])
+            content.putalpha(100)
         # make the image transparent
         playerimg.paste(content, (400, 380))
         # provides the count
@@ -283,7 +309,7 @@ async def drawplayer(player,
                      fill=WHITE)
     # Calculate their gear worth
     async with aiohttp.ClientSession() as session:
-        gearworth = await calculate_gearworth(player, session, True)
+        gearworth = await calculate_gearworth(player, session)
     # Set IP
     width, height = drawimg.textsize("IP: {}".format(
         round(player["AverageItemPower"], 2)),
@@ -325,6 +351,7 @@ class kill:
         Usage: 
         variable = kill(kill json item)
         """
+        self.starttime = timetime()
         kd = dc(kd)
         self.kd = kd
         self.killer = kd["Killer"]
@@ -342,9 +369,10 @@ class kill:
         self.victim = kd["Victim"]
         # Get the people who did the most damage
         try:
-            self.assist = sorted([i for i in kd["Participants"]],
-                                 key=lambda x: x["DamageDone"],
-                                 reverse=True)[0]
+            self.assist = sorted(
+                [i for i in kd["Participants"] if i["DamageDone"] > 0],
+                key=lambda x: x["DamageDone"],
+                reverse=True)[0]
         # Happens when the amount of participants is less than 1(even though I don't know how did it happen)
         except IndexError:
             self.assist = dc(self.killer)
@@ -376,7 +404,8 @@ class kill:
         # Get the list of participants that dealt damage
         self.participants = sorted(
             [i for i in kd["Participants"] if i["DamageDone"] != 0],
-            key=lambda x: x["DamageDone"])
+            key=lambda x: x["DamageDone"],
+            reverse=True)
         for i in self.participants:
             if i["AllianceName"] and not match(r"\[.*\]", i["AllianceName"]):
                 i["AllianceName"] = "[{}]".format(i["AllianceName"])
@@ -423,8 +452,8 @@ class kill:
         background.save(self.fileloc, "png")
         # returns gear worth
         async with aiohttp.ClientSession() as session:
-            self.gw = str(round(await calculate_gearworth(self.victim,
-                                                          session)))
+            self.gw = round(await calculate_gearworth(self.victim, session))
+        self.inv = await self.inventory()
         return background
 
     # returns a tuple of 3 values, [kill/assist] name, guild(allliance) and damage[percentage]
@@ -438,8 +467,9 @@ class kill:
                  for i in self.participants]
         # list of damage/percent of total damage
         perc = [
-            "{}[{}%]".format(round(i["DamageDone"]),
-                             round(i['DamageDone'] / self.totaldamage * 100, 2))
+            "{:4}[{}%]".format(
+                round(i["DamageDone"]),
+                round(i['DamageDone'] / self.totaldamage * 100, 2))
             for i in self.participants
         ]
         # return joins
@@ -448,7 +478,7 @@ class kill:
     def title(self, iskiller=False, isvictim=False, isassist=False):
         if (iskiller or isassist) and isvictim:
             useitem = prefixes["ffire"]
-        elif self.solokill:
+        elif self.solokill and len(self.participants) == 1 and iskiller:
             useitem = prefixes["solo"]
         elif (iskiller or isassist) and self.victim["DeathFame"] >= 500000:
             useitem = prefixes["juicyk"]
@@ -463,8 +493,28 @@ class kill:
         else:
             useitem = prefixes["juicy"]
         return (
-            f":{randchoice(useitem['emoji'])}: {self.killer} killed {self.victim} for {self.victim['DeathFame']} kill fame.",
-            randchoice(useitem["choices"]))
+            f"{self.killer['Name']} killed {self.victim['Name']} for {self.victim['DeathFame']} kill fame. :{randchoice(useitem['emoji'])}:",
+            f"{randchoice(useitem['choices'])}")
+
+    async def inventory(self):
+        stuff = []
+        async with aiohttp.ClientSession() as session:
+            for i in [j for j in self.victim["Inventory"] if j is not None]:
+                itemworth = _getaverage(await get_iw_json(i["Type"], session),
+                                        i["Quality"])
+                stuff.append(
+                    (items_get(i["Type"],
+                               i["Quality"]), int(i["Count"]), int(itemworth)))
+        for i in stuff:
+            self.gw += i[2] * i[1]
+        sortedstuff = sorted(stuff, key=lambda x: x[2], reverse=True)
+        rs = lambda x, y: "\n".join([str(i[int(x)]) for i in tuple(y)])
+        if any(len(rs(0, sortedstuff)) > 1024 for x in range(0, 3)):
+            s0, s1 = (lzlist(sortedstuff).split_to(2))
+            return (rs(0, s0), rs(1, s0), rs(2, s0), rs(0, s1), rs(1, s1),
+                    rs(2, s1), True)
+        return (rs(0, sortedstuff), rs(1, sortedstuff), rs(2, sortedstuff), "",
+                "", "", False)
 
     def create_embed(self, followinglists):
         self.file = discordfile(self.fileloc, filename=f"{self.eventid}.png")
@@ -474,7 +524,7 @@ class kill:
         isvictim = self.victim["Id"] in followinglists or self.victim[
             "GuildId"] in followinglists
         isassist = False
-        for i in self.kd["Participants"]:
+        for i in [i for i in self.kd["Participants"] if i["DamageDone"] > 0]:
             if i["Id"] in followinglists or i["GuildId"] in followinglists:
                 isassist = True
         if (iskiller or isassist) and isvictim:
@@ -493,10 +543,10 @@ class kill:
             url=f"https://albiononline.com/en/killboard/kill/{self.eventid}",
             description=localdescription + "!" * rrange(1, 3),
             color=color,
-            footer="Localized Kill Time: ",
             timestamp=self.eventtime)
         # derives image link from eventid as uploads are done in draw() function
         self.embed.set_image(url=f"attachment://{self.eventid}.png")
+        self.embed.set_footer(text="Local Kill time: ")
         # get an assist list
         self.assistlist = self.assists
         # This step may encounter an error where no one dealt damage
@@ -514,26 +564,22 @@ class kill:
                              value=self.assistlist[2],
                              inline=True)
         # check if victim's inventory is empty
-        if "\n".join((items_get(i["Type"])
-                      for i in self.victim["Inventory"]
-                      if i is not None)) != "":
+        if len([i for i in self.victim["Inventory"] if i is not None]) > 0:
+            i0, c0, v0, i1, c1, v1, lis2 = self.inv
             # adds embed field for victim's inventory
-            self.embed.add_field(name="Amount",
-                                 value="\n".join(
-                                     (str(i["Count"])
-                                      for i in self.victim["Inventory"]
-                                      if i is not None)),
-                                 inline=True)
             self.embed.add_field(name="Victim's Inventory:",
-                                 value="\n".join(
-                                     (items_get(i["Type"])
-                                      for i in self.victim["Inventory"]
-                                      if i is not None)),
+                                 value=i0,
                                  inline=True)
+            self.embed.add_field(name="Amount", value=c0, inline=True)
+            self.embed.add_field(name="Worth est.", value=v0, inline=True)
+            if lis2:
+                self.embed.add_field(name="Inventory", value=i1, inline=True)
+                self.embed.add_field(name="Amount", value=c1, inline=True)
+                self.embed.add_field(name="Worth est.", value=v1, inline=True)
 
         # adds embed field for the total gear worth.
         self.embed.add_field(name="Estimated Victim's Total Worth:",
-                             value=self.gw,
+                             value="{:,}".format(self.gw),
                              inline=False)
         '''
         returns three items: 

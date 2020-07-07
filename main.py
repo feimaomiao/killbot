@@ -4,15 +4,17 @@ import difflib
 import json
 import logging
 import os
-import time
+from time import time as timetime
 from copy import deepcopy as dc
-
-import requests
-from lzl import lzlist
+from os.path import isfile
 
 import discord
-from cogs import *
+import requests
+from discord import Embed as discordembed
 from discord.ext import commands, tasks
+from lzl import lzlist
+
+from cogs import *
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,7 +29,7 @@ bot.remove_command("help")
 kb = killboard()
 configsonline = requests.get(JSONLINK).json()
 configs = dc({
-    k: v for k, v in configsonline[0].items() if k not in ["_id", "_createdOn"]
+    k: v for k, v in configsonline[0].items() if k not in ("_id", "_createdOn")
 })
 global last_id
 last_id = configsonline[0]["_id"]
@@ -36,17 +38,29 @@ with open("default_cfg_template.json") as defcfgfile:
 global followingparties
 followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
     "trackingplayer"]
+with open("patchnotes") as patchnotesfile:
+    patchnotes = patchnotesfile.read()
 
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(activity=discord.Game(
-        name="scanning the internet"))
-    print("online")
+    await bot.change_presence(activity=discord.Activity(
+        type=discord.ActivityType.watching, name="the killboard"))
+    for guilds in [c for c in configs if c != 'GENERAL']:
+        if configs[guilds]["sendchannel"] == "0":
+            continue
+        channel = discord.utils.find(
+            lambda x: x.id == int(configs[guilds]["sendchannel"]),
+            bot.get_all_channels())
+        try:
+            await channel.trigger_typing()
+            await channel.send(patchnotes)
+        except AttributeError:
+            continue
 
 
-# set loop to 5 minutes per update
-@tasks.loop(minutes=5)
+# set loop to 150 seconds per update
+@tasks.loop(seconds=150)
 async def loadimages():
     try:
         if not kb.set:
@@ -55,23 +69,28 @@ async def loadimages():
             k = kill(kills)
             await k.draw()
             # loop through guilds
+            embedder, fileobj, fileloc = None, None, None
             for guilds in [c for c in configs if c != "GENERAL"]:
-                if configs[guilds]["sendchannel"] == "0":
+                if configs[guilds]["sendchannel"] == 0:
                     continue
                 if kb.qualify(configs[guilds], dc(kills)):
                     embedder, fileobj, fileloc = k.create_embed(
                         configs[guilds]["trackingplayer"] +
                         configs[guilds]["trackingguild"])
+                    while not isfile(fileloc):
+                        await k.draw()
                     # load send channel
                     channel = discord.utils.find(
                         lambda x: x.id == int(configs[guilds]["sendchannel"]),
                         bot.get_all_channels())
+                    if not channel:
+                        continue
                     await channel.trigger_typing()
                     await channel.send(file=fileobj, embed=embedder)
-            del k
             # Deletes file
             os.remove(fileloc)
-            print("File deleted")
+            print(f"{fileloc} deleted: {timetime()-k.starttime} seconds used")
+            del k
         print("Finished")
         return
     except Exception as e:
@@ -160,12 +179,20 @@ async def channel(client, channel_name):
     # see if channelname is an id
     channel = [i for i in client.guild.channels if str(i.id) == channel_name]
     # get closest match to channel
-    if len(channel) == 0:
-        channel = difflib.get_close_matches(
-            channel_name, [i.name for i in client.guild.channels])
-        channel = [
-            i for i in client.guild.text_channels if i.name == channel[0]
-        ]
+    try:
+        if len(channel) == 0:
+            channel = difflib.get_close_matches(
+                channel_name, [i.name for i in client.guild.channels])
+            channel = [
+                i for i in client.guild.text_channels if i.name == channel[0]
+            ]
+    except Exception as e:
+        print(type(e), e)
+        await client.send(
+            "Channel cannot be set due to unknown error.\nSend channel is currently configured to this channel!"
+        )
+        configs[f"a{client.guild.id}"]["sendchannel"] = str(client.channel.id)
+        return generalconfigs()
     # if channel is not found
     if len(channel) == 0:
         await client.send(
@@ -329,6 +356,12 @@ async def list_following(client):
     nl = "\n"
     lss = f"```css{nl*2}Following Guilds:{nl}{nl.join([i for i in configs['a' +str(client.guild.id)]['trackingguildname']])}{nl*2}Following players:{nl}{nl.join([i for i in configs['a' +str(client.guild.id)]['trackingplayername']])}{nl*2}Minimum Fame for sending: {configs[f'a{client.guild.id}']['minimumkillfame']}```"
     return await client.send(lss)
+
+
+@bot.command(name="uptime")
+async def uptime(client):
+    timediff = (datetime.datetime.now() - kb.starttime)
+    await client.send("uptime: " + str(timediff))
 
 
 generalconfigs()

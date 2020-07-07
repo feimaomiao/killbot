@@ -1,1 +1,115 @@
-{"ffire":{"emoji":["confused","confounded","woozy_face"],"choices":["A friendly fire","Friendly fire initiated!","A fight between the legends"]},"solo":{"emoji":["partying_face","heart_eyes_cat","smiling_face_with_3_hearts","hot_face"],"choices":["Nice solo kill","A beautiful solo kill","Clean, clean solo kill","This will be remembered","You can't believe this"]},"juicyk":{"emoji":["money_mouth","cowboy","star_struck","sunglasses"],"choices":["Juicy kill","A wonderful kill","Amazzzzing","A kill that will be remembered","You won't stop talking about this"]},"kill":{"emoji":["nerd","smiling_imp","heart_eyes","stuck_out_tongue_closed_eyes"],"choices":["A nice kill","Beautiful kill","BANG","You could milk on this!"]},"assist":{"emoji":["yum","stuck_out_tongue","upside_down","zany_face"],"choices":["Great assist has been done","Big support did behind the scenes!","Well done","Nice assist"]},"juicyd":{"emoji":["face_with_symbols_over_mouth","dizzy_face","sob","crying_cat_face"],"choices":["Big OOF","feelsbadman","You're gonna pay for that","The bank is crying"]},"death":{"emoji":["pensive","frowning2","persevere","cry"],"choices":["Oh no","Good luck next time","Be careful next time","F"]},"juicy":{"emoji":["astonished","face_with_monocle","stuck_out_tongue_winking_eye","exploding_head"],"choices":["Can't believe this","Oh My God","WHAT IS THIS","WOW","Wish that was me"]}}
+{
+  "ffire": {
+    "emoji": [
+      "confused",
+      "confounded",
+      "woozy_face"
+    ],
+    "choices": [
+      "A friendly fire",
+      "Friendly fire initiated!",
+      "A fight between the legends"
+    ]
+  },
+  "solo": {
+    "emoji": [
+      "partying_face",
+      "heart_eyes_cat",
+      "smiling_face_with_3_hearts",
+      "hot_face"
+    ],
+    "choices": [
+      "Nice solo kill",
+      "A beautiful solo kill",
+      "Clean, clean solo kill",
+      "This will be remembered",
+      "You can't believe this"
+    ]
+  },
+  "juicyk": {
+    "emoji": [
+      "money_mouth",
+      "cowboy",
+      "star_struck",
+      "sunglasses"
+    ],
+    "choices": [
+      "Juicy kill",
+      "A wonderful kill",
+      "Amazzzzing",
+      "A kill that will be remembered",
+      "You won't stop talking about this"
+    ]
+  },
+  "kill": {
+    "emoji": [
+      "nerd",
+      "smiling_imp",
+      "heart_eyes",
+      "stuck_out_tongue_closed_eyes"
+    ],
+    "choices": [
+      "A nice kill",
+      "Beautiful kill",
+      "BANG",
+      "You could milk on this!"
+    ]
+  },
+  "assist": {
+    "emoji": [
+      "yum",
+      "stuck_out_tongue",
+      "upside_down",
+      "zany_face"
+    ],
+    "choices": [
+      "Great assist has been done",
+      "Big support did behind the scenes!",
+      "Well done",
+      "Nice assist"
+    ]
+  },
+  "juicyd": {
+    "emoji": [
+      "face_with_symbols_over_mouth",
+      "dizzy_face",
+      "sob",
+      "crying_cat_face"
+    ],
+    "choices": [
+      "Big OOF",
+      "feelsbadman",
+      "You're gonna pay for that",
+      "Your bank is crying"
+    ]
+  },
+  "death": {
+    "emoji": [
+      "pensive",
+      "frowning2",
+      "persevere",
+      "cry"
+    ],
+    "choices": [
+      "Oh no",
+      "Good luck next time",
+      "Be careful next time",
+      "F"
+    ]
+  },
+  "juicy": {
+    "emoji": [
+      "astonished",
+      "face_with_monocle",
+      "stuck_out_tongue_winking_eye",
+      "exploding_head"
+    ],
+    "choices": [
+      "Can't believe this",
+      "Oh My God",
+      "WHAT IS THIS",
+      "WOW",
+      "Wish that was me"
+    ]
+  }
+}
