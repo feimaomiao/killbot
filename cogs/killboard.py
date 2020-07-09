@@ -25,7 +25,8 @@ class killboard:
     async def start(self):
         # set a old example for comparison
         # Defauit value is 0 as we want to get the latest information
-        async with aiohttp.ClientSession() as client:
+        async with aiohttp.ClientSession(
+                headers={"Connection": "close"}) as client:
             self.old = await self._connect(0, client)
         # initialise the new variable
         self.new = dc(self.old)
@@ -64,7 +65,8 @@ class killboard:
         return [i for i in self.new if i not in self.old]
 
     async def load(self):
-        async with aiohttp.ClientSession() as client:
+        async with aiohttp.ClientSession(
+                headers={"Connection": "close"}) as client:
             # Get the new values of new
             self.new = await self._connect(0, client)
         # returns none if nothing new is updated on the api
@@ -83,7 +85,8 @@ class killboard:
         self.old += self.new
         # determines if 1 query is enough for all the new kills
         # also, the api does not allow query >= 1000
-        async with aiohttp.ClientSession() as client:
+        async with aiohttp.ClientSession(
+            headers={"Connection": "close"}) as client:
             while True:
                 try:
                     count += 1
@@ -112,7 +115,8 @@ class killboard:
     @staticmethod
     async def search(tpe, name):
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(
+                    headers={"Connection": "close"}) as session:
                 async with session.get(
                         "https://gameinfo.albiononline.com/api/gameinfo/search?q="
                         + "+".join([i for i in name])) as resp:

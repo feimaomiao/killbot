@@ -4,9 +4,9 @@ import difflib
 import json
 import logging
 import os
-from time import time as timetime
 from copy import deepcopy as dc
 from os.path import isfile
+from time import time as timetime
 
 import discord
 import requests

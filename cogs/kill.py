@@ -141,7 +141,8 @@ def convert_to_transparent(imageobj, transparent):
 # async function to check if itemid is a double handed weapon.
 # parameter: name -> unique key of weapon
 async def is_two_main_hand(name):
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+            headers={"Connection": "close"}) as session:
         async with session.get(
                 "https://www.albiononline2d.com/en/item/id/{}".format(
                     name)) as resp:
@@ -176,9 +177,9 @@ async def get_iw_json(items, session, count=0):
     getlink = lambda x: "https://www.albion-online-data.com/api/v2/stats/prices/" + x + "?locations=Lymhurst,Martlock,Bridgewatch,FortSterling,Thetford,Caerleon"
     try:
         async with session.get(getlink(items)) as resp:
-            return await resp.json()
+            return await resp.json(content_type=None)
     # happens when the returned item is 404 error
-    except aiohttp.client_exceptions.ContentTypeError:
+    except json.decoder.JSONDecodeError:
         if count == 0:
             logging.warning("Gearworth Error {}".format(items))
         await asyncio.sleep(1)
@@ -271,7 +272,8 @@ async def drawplayer(player,
     photolocation: location data on the image, it is a 2 point tuple that helps determine the x and y value of the upper left corner of the photo
     textspace: location data for the count of the item. Usually only useful in potion slot and food slot, used to determine the count of the item.
     """
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+            headers={"Connection": "close"}) as session:
         # unpacks the data
         for item, imgspace, textspace in data:
             # check if the item exists
@@ -295,7 +297,8 @@ async def drawplayer(player,
 
     if twohand and equipments["MainHand"]:
         # downloads the image again from the database
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+                headers={"Connection": "close"}) as session:
             content = await get_image(_baseimagelink,
                                       equipments["MainHand"]["Type"], session,
                                       equipments["MainHand"]["Count"])
@@ -308,7 +311,8 @@ async def drawplayer(player,
                      font=systemfont,
                      fill=WHITE)
     # Calculate their gear worth
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+            headers={"Connection": "close"}) as session:
         gearworth = await calculate_gearworth(player, session)
     # Set IP
     width, height = drawimg.textsize("IP: {}".format(
@@ -451,7 +455,8 @@ class kill:
         self.fileloc = f"temp/{self.eventid}.png"
         background.save(self.fileloc, "png")
         # returns gear worth
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+            headers={"Connection": "close"}) as session:
             self.gw = round(await calculate_gearworth(self.victim, session))
         self.inv = await self.inventory()
         return background
@@ -498,7 +503,8 @@ class kill:
 
     async def inventory(self):
         stuff = []
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+                headers={"Connection": "close"}) as session:
             for i in [j for j in self.victim["Inventory"] if j is not None]:
                 itemworth = _getaverage(await get_iw_json(i["Type"], session),
                                         i["Quality"])

@@ -1,9 +1,9 @@
 Hello! Killbot is just updated.
 The kills happened about 10 minutes ago may not be recorded. 
-Here are the update notes:
+Here are the patch notes:
 
 - - - -
-•	Fixed a bug where the system mistakes the healer as the killer :imp:
+•	This patch fixed an unexpected `json.decoder.JSONDecodeError` occuring when the data project api failes to return a valid data :crying_cat_face:
 - - - -
 
-- feimao[GM of killbot] :smiley_cat:
+- feimao[GM of killbot] :cat:
