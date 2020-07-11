@@ -3,7 +3,6 @@ import datetime
 import json
 import logging
 import os
-from time import time as timetime
 from collections import Counter
 from copy import deepcopy as dc
 from io import BytesIO
@@ -11,6 +10,7 @@ from random import choice as randchoice
 from random import randrange as rrange
 from re import match, sub
 from statistics import mean as avg
+from time import time as timetime
 
 import aiohttp
 import requests

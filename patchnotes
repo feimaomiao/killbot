@@ -1,9 +1,9 @@
 Hello! Killbot is just updated.
-The kills happened about 10 minutes ago may not be recorded. 
-Here are the patch notes:
+Apologize for the downtime, killbot broke after an update while I was not at home xD
+here are the update notes
 
 - - - -
-•	This patch fixed an unexpected `json.decoder.JSONDecodeError` occuring when the data project api failes to return a valid data :crying_cat_face:
+•	Major update to the initialise system, updates now will not interrupt the killbot's loading now.
 - - - -
 
-- feimao[GM of killbot] :cat:
+- feimao[Daddy of killbot] :cat:

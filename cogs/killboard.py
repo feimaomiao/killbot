@@ -8,9 +8,7 @@ import aiohttp
 
 class killboard:
 
-    def __init__(self):
-        # initialise a set variable to make sure if it is online
-        self.set = False
+    def __init__(self, latest):
         # initalise the differnce variable
         self.diff = []
         # initialise tracking guilds/alliances
@@ -20,20 +18,9 @@ class killboard:
         #set a start time
         self.starttime = datetime.datetime.now()
         # set a latest timer
-        self.latest = 0
-
-    async def start(self):
-        # set a old example for comparison
-        # Defauit value is 0 as we want to get the latest information
-        async with aiohttp.ClientSession(
-                headers={"Connection": "close"}) as client:
-            self.old = await self._connect(0, client)
-        # initialise the new variable
-        self.new = dc(self.old)
-        self.set = True
-        self.latest = max([i["EventId"] for i in self.old])
-        print("objcreated")
-        return
+        self.latest = latest
+        # selt an old
+        self.old = []
 
     # Get a connection and download value from the gameinfo api
     @staticmethod

@@ -26,13 +26,16 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or('>'))
 
 bot.remove_command("help")
 
-kb = killboard()
-configsonline = requests.get(JSONLINK).json()
+configsonline = requests.get(JSONLINK).json()[0]
 configs = dc({
-    k: v for k, v in configsonline[0].items() if k not in ("_id", "_createdOn")
+    k: v
+    for k, v in configsonline.items()
+    if k not in ("_id", "_createdOn", "latest_eventid")
 })
 global last_id
-last_id = configsonline[0]["_id"]
+last_id = configsonline["_id"]
+global latest_eventid
+latest_eventid = configsonline["latest_eventid"]
 with open("default_cfg_template.json") as defcfgfile:
     defaultconfigs = json.load(defcfgfile)
 global followingparties
@@ -40,6 +43,7 @@ followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
     "trackingplayer"]
 with open("patchnotes") as patchnotesfile:
     patchnotes = patchnotesfile.read()
+kb = killboard(latest_eventid)
 
 
 @bot.event
@@ -63,8 +67,6 @@ async def on_ready():
 @tasks.loop(seconds=150)
 async def loadimages():
     try:
-        if not kb.set:
-            await kb.start()
         for kills in await kb.newkills():
             k = kill(kills)
             await k.draw()
@@ -88,9 +90,14 @@ async def loadimages():
                     await channel.trigger_typing()
                     await channel.send(file=fileobj, embed=embedder)
             # Deletes file
-            os.remove(fileloc)
-            print(f"{fileloc} deleted: {timetime()-k.starttime} seconds used")
+            try:
+                print(
+                    f"{fileloc} deleted: {timetime()-k.starttime} seconds used")
+                os.remove(fileloc)
+            except TypeError:
+                continue
             del k
+        generalconfigs()
         print("Finished")
         return
     except Exception as e:
@@ -159,17 +166,18 @@ async def on_guild_remove(guild=None):
 # Write configs to the currentconfigs
 def updateconfigs(currconfigs):
     global last_id
+    global configs
     requests.delete(f"{JSONLINK}/{last_id}")
     send = requests.post(JSONLINK,
                          json=currconfigs,
                          headers={"content-type": "application/json"})
-    configsonline = requests.get(JSONLINK).json()
+    configsonline = requests.get(JSONLINK).json()[0]
     configs = dc({
         k: v
-        for k, v in configsonline[0].items()
-        if k not in ["_id", "_createdOn"]
+        for k, v in configsonline.items()
+        if k not in ("_id", "_createdOn", "latest_eventid")
     })
-    last_id = configsonline[0]["_id"]
+    last_id = configsonline["_id"]
     return
 
 
@@ -346,6 +354,8 @@ def generalconfigs():
     # update the following parties for the colors!
     followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
         "trackingplayer"]
+    #set a latest item
+    configs["latest_eventid"] = kb.latest
     # dump everything into the configs file
     return updateconfigs(configs)
 
