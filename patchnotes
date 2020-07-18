@@ -1,9 +1,11 @@
 Hello! Killbot is just updated.
-Apologize for the downtime, killbot broke after an update while I was not at home xD
-here are the update notes
-
+`release 2.2.0`
 - - - -
-•	Major update to the initialise system, updates now will not interrupt the killbot's loading now.
+•	Formatting some code
+•	Now update message will be manual as heroku restarting their server fucks me up daily
+•	Fixed a possible problem from jsonbox that could lead to `AttributeError` *and* `TypeError`
+•	Fixed a long uptime and respondtime while offline members are being loaded when the bot doesnt `actually` track any member data
+•	Re-uploading the code to github(after a week lol) 
 - - - -
 
 - feimao[Daddy of killbot] :cat:

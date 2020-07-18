@@ -74,10 +74,10 @@ def substitute(name):
     elif h:
         return f"HCE Map (Lvl. {h.group(1)})"
     ls = [
-        "Novice's ", "Journeyman's ", "Adept's ", "Expert's ", "Master's ",
-        "Grandmaster's ", "Elder's ", "Uncommon ", "Rare ", "Exceptional ",
-        "Novice ", "Journeyman ", "Adept ", "Expert ", "Master ",
-        "Grandmaster ", "Elder ", "Major ", "Minor ", "Danglemouth "
+        "Beginner's ", "Novice's ", "Journeyman's ", "Adept's ", "Expert's ",
+        "Master's ", "Grandmaster's ", "Elder's ", "Uncommon ", "Rare ",
+        "Exceptional ", "Novice ", "Journeyman ", "Adept ", "Expert ",
+        "Master ", "Grandmaster ", "Elder ", "Major ", "Minor ", "Danglemouth "
     ]
     for items in ls:
         name = sub(items, "", name)
@@ -141,17 +141,22 @@ def convert_to_transparent(imageobj, transparent):
 # async function to check if itemid is a double handed weapon.
 # parameter: name -> unique key of weapon
 async def is_two_main_hand(name):
-    async with aiohttp.ClientSession(
-            headers={"Connection": "close"}) as session:
-        async with session.get(
-                "https://www.albiononline2d.com/en/item/id/{}".format(
-                    name)) as resp:
-            return {
-                k: v for k, v in lzlist([
-                    i.string for i in bs(await resp.text(),
-                                         features="html.parser").find_all("td")
-                ]).split_by(2)
-            }["Two Handed"] == "true"
+    try:
+        async with aiohttp.ClientSession(
+                connector=aiohttp.TCPConnector(verify_ssl=False),
+                headers={"Connection": "close"}) as session:
+            async with session.get(
+                    "https://www.albiononline2d.com/en/item/id/{}".format(
+                        name)) as resp:
+                return {
+                    k: v for k, v in lzlist([
+                        i.string
+                        for i in bs(await resp.text(),
+                                    features="html.parser").find_all("td")
+                    ]).split_by(2)
+                }["Two Handed"] == "true"
+    except Exception as e:
+        return await is_two_main_hand(name)
 
 
 # async function to get image from the given link
@@ -174,7 +179,7 @@ async def get_image(link, item, session, quality=1):
 
 async def get_iw_json(items, session, count=0):
     # Lambda function to return the api link
-    getlink = lambda x: "https://www.albion-online-data.com/api/v2/stats/prices/" + x + "?locations=Lymhurst,Martlock,Bridgewatch,FortSterling,Thetford,Caerleon"
+    getlink = lambda x: "https://www.albion-online-data.com/api/v2/stats/prices/" + x
     try:
         async with session.get(getlink(items)) as resp:
             return await resp.json(content_type=None)
@@ -182,7 +187,9 @@ async def get_iw_json(items, session, count=0):
     except json.decoder.JSONDecodeError:
         if count == 0:
             logging.warning("Gearworth Error {}".format(items))
-        await asyncio.sleep(1)
+        if count > 5:
+            count = 5
+        await asyncio.sleep(count)
         return await get_iw_json(items, session, count + 1)
 
 

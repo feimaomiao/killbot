@@ -7,6 +7,7 @@ import os
 from copy import deepcopy as dc
 from os.path import isfile
 from time import time as timetime
+from hashlib import sha256
 
 import discord
 import requests
@@ -22,7 +23,8 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 JSONLINK = os.getenv("JSONLINK")
 
 logging.basicConfig(level=logging.INFO)
-bot = commands.Bot(command_prefix=commands.when_mentioned_or('>'))
+bot = commands.Bot(command_prefix=commands.when_mentioned_or('>'),
+                   fetch_offline_members=False)
 
 bot.remove_command("help")
 
@@ -43,6 +45,7 @@ followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
     "trackingplayer"]
 with open("patchnotes") as patchnotesfile:
     patchnotes = patchnotesfile.read()
+    shakey = sha256(patchnotes.encode()).hexdigest()
 kb = killboard(latest_eventid)
 
 
@@ -50,6 +53,13 @@ kb = killboard(latest_eventid)
 async def on_ready():
     await bot.change_presence(activity=discord.Activity(
         type=discord.ActivityType.watching, name="the killboard"))
+    print(f"UPDATE LOG Hash: {shakey}")
+
+
+@bot.command(name="update")
+async def updatedmessage(client, key):
+    if key != shakey:
+        return await client.send("Wrong key entered!")
     for guilds in [c for c in configs if c != 'GENERAL']:
         if configs[guilds]["sendchannel"] == "0":
             continue
@@ -61,6 +71,7 @@ async def on_ready():
             await channel.send(patchnotes)
         except AttributeError:
             continue
+    return
 
 
 # set loop to 150 seconds per update
@@ -117,20 +128,21 @@ track (guild|player) name       Tracks and sends a kill by the given guild/playe
 ! May take some time as the server has to search for new values
 for example: 
 ">track player feimaomiao"
-">track guild sex with ex"
+">track elevate"
 
 untrack (guild|player) name     Stops tracking that guild/player anymore
 ! May take some time as the server has to search for new values
 for example:
 ">untrack player feimaomiao"
-">untrack guild sex with ex"
+">untrack guild elevate"
 
 minfame fame:                   set minimum fame to trigger a kill to be sent
 for example:
 ">minfame 1000000"
 
 list:                           list all currently tracking players and the guilds
-">list"```"""
+">list"
+```"""
     await client.send(string)
 
 

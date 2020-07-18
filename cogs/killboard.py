@@ -30,8 +30,7 @@ class killboard:
         _link = lambda x: "https://gameinfo.albiononline.com/api/gameinfo/events?limit=51&offset={}".format(
             x)
 
-        if count > 9:
-            count = 9
+        count = 9 if count > 9 else count
         # using the requests module to get a connection from the link
         # offset can be adjusted if more than 51 kills occured between updates
         async with client.get(_link(offset)) as resp:
@@ -80,19 +79,23 @@ class killboard:
                     self.new = await self._connect(50 * count, client)
                     self.new.sort(key=lambda x: int(x["EventId"]))
                     self.diff += [
-                        i for i in self.new_values if i not in self.diff
+                        i for i in self.new_values
+                        if i not in self.diff and i["EventId"] > self.latest
                     ]
                     self.old += self.new
                     self.old.sort(key=lambda x: int(x["EventId"]))
-                    if (50 * count + 1) > 1000:
+                    if min([i["EventId"] for i in self.new]) < self.latest:
                         break
-                    elif min([i["EventId"] for i in self.new]) < self.latest:
+                    elif (50 * count + 1) > 1000:
                         break
                 except Exception as e:
                     print(type(e), e.message)
         # Set old to the latest kills
         print("Total: {}".format(len(self.diff)))
-        self.latest = max((i["EventId"] for i in self.diff))
+        try:
+            self.latest = max((i["EventId"] for i in self.diff))
+        except ValueError:
+            self.latest = self.latest
         self.old = self.diff
         return list({
             v["EventId"]: v
