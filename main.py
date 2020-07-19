@@ -3,11 +3,12 @@ import datetime
 import difflib
 import json
 import logging
+import re
 import os
 from copy import deepcopy as dc
+from hashlib import sha256
 from os.path import isfile
 from time import time as timetime
-from hashlib import sha256
 
 import discord
 import requests
@@ -35,18 +36,21 @@ configs = dc({
     if k not in ("_id", "_createdOn", "latest_eventid")
 })
 global last_id
-last_id = configsonline["_id"]
 global latest_eventid
+global followingparties
+global sendupdate
+sendupdate = True
+last_id = configsonline["_id"]
 latest_eventid = configsonline["latest_eventid"]
+kb = killboard(latest_eventid)
 with open("default_cfg_template.json") as defcfgfile:
     defaultconfigs = json.load(defcfgfile)
-global followingparties
 followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
     "trackingplayer"]
 with open("patchnotes") as patchnotesfile:
     patchnotes = patchnotesfile.read()
     shakey = sha256(patchnotes.encode()).hexdigest()
-kb = killboard(latest_eventid)
+    __version__ = re.match(r".*v(\d\.\d\.\db{0,1}).*", patchnotes,re.MULTILINE).group(1)
 
 
 @bot.event
@@ -57,9 +61,12 @@ async def on_ready():
 
 
 @bot.command(name="update")
-async def updatedmessage(client, key):
+async def updatedmessage(client, key=None):
+    global sendupdate
     if key != shakey:
         return await client.send("Wrong key entered!")
+    if not sendupdate:
+        return await client.send("Update must be sent once only!")
     for guilds in [c for c in configs if c != 'GENERAL']:
         if configs[guilds]["sendchannel"] == "0":
             continue
@@ -71,7 +78,16 @@ async def updatedmessage(client, key):
             await channel.send(patchnotes)
         except AttributeError:
             continue
+    sendupdate = False
     return
+
+
+@bot.command(name="key")
+async def getkey(client, version=None):
+    if version != __version__:
+        return None
+    else:
+        await client.send(shakey)
 
 
 # set loop to 150 seconds per update
@@ -103,9 +119,11 @@ async def loadimages():
             # Deletes file
             try:
                 print(
-                    f"{fileloc} deleted: {timetime()-k.starttime} seconds used")
-                os.remove(fileloc)
-            except TypeError:
+                    f"{k.eventid} deleted: {round(timetime()-k.starttime,3)} seconds used"
+                )
+                os.remove(fileloc if fileloc != None else k.fileloc)
+            except Exception as e:
+                print(e)
                 continue
             del k
         generalconfigs()
@@ -384,6 +402,19 @@ async def list_following(client):
 async def uptime(client):
     timediff = (datetime.datetime.now() - kb.starttime)
     await client.send("uptime: " + str(timediff))
+
+
+@bot.command(name="colorcode")
+async def colorcode(client):
+    string = f"""```\
+#00FF00 (Green)     : When the killer is tracked
+#00FFFF (Cyan)      : When the kill fame is over the minimum kill fame requirement 
+#3131B2 (Blue)      : When the victim estimated total worth is over 2.5 Million
+#AE00FF (Purple)    : When the killer and the victim is both tracked
+#D42F2F (Red)       : When the victim is tracked
+#FA77AA (Pink)      : When the kill estimated worth is over 2.5 Million
+```"""
+    await client.send(string)
 
 
 generalconfigs()

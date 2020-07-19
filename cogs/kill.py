@@ -189,6 +189,12 @@ async def get_iw_json(items, session, count=0):
             logging.warning("Gearworth Error {}".format(items))
         if count > 5:
             count = 5
+        if count == 5:
+            try:
+                return requests.get(getlink(items)).json()
+            except Exception as e:
+                print(e)
+                return await get_iw_json(items, session, 1)
         await asyncio.sleep(count)
         return await get_iw_json(items, session, count + 1)
 
@@ -411,7 +417,6 @@ class kill:
             sum([i["DamageDone"] for i in kd["Participants"]]))
         self.peoplegettingfame = len(
             [i for i in kd["GroupMembers"] if i["KillFame"] > 0])
-
         # Get the list of participants that dealt damage
         self.participants = sorted(
             [i for i in kd["Participants"] if i["DamageDone"] != 0],
@@ -435,6 +440,7 @@ class kill:
         if self.totaldamage == 0:
             self.totaldamage = 100
             logging.warning("totaldamage error: {}".format(self.eventid))
+        self.gw = 0
 
     # Function to draw a whole set of gear on a blank template
     async def draw(self):
@@ -487,26 +493,36 @@ class kill:
         # return joins
         return ("\n".join(fn), "\n".join(guild), "\n".join(perc))
 
-    def title(self, iskiller=False, isvictim=False, isassist=False):
+    def gettype(self, iskiller=False, isvictim=False, isassist=False):
         if (iskiller or isassist) and isvictim:
             useitem = prefixes["ffire"]
+            color = 0xae00ff
         elif self.solokill and len(self.participants) == 1 and iskiller:
             useitem = prefixes["solo"]
-        elif (iskiller or isassist) and self.victim["DeathFame"] >= 500000:
+            color = 0x00ff00 if self.gw <= 2500000 else 0xfa77aa
+        elif (iskiller or isassist) and self.gw > 2500000:
             useitem = prefixes["juicyk"]
+            color = 0xfa77aa
         elif iskiller:
             useitem = prefixes["kill"]
+            color = 0x00ff00
         elif isassist:
             useitem = prefixes["assist"]
-        elif isvictim and self.victim["DeathFame"] >= 500000:
+            color = 0x00ff00
+        elif isvictim and self.gw > 2500000:
             useitem = prefixes["juicyd"]
+            color = 0x3131b2
         elif isvictim:
             useitem = prefixes["death"]
+            color = 0xd42f2f
         else:
             useitem = prefixes["juicy"]
+            color = 0x00ffff
         return (
+            f"{self.victim['Name']} was killed by {self.killer['Name']} for {self.victim['DeathFame']} kill fame"
+            if isvictim else
             f"{self.killer['Name']} killed {self.victim['Name']} for {self.victim['DeathFame']} kill fame. :{randchoice(useitem['emoji'])}:",
-            f"{randchoice(useitem['choices'])}")
+            f"{randchoice(useitem['choices'])}", color)
 
     async def inventory(self):
         stuff = []
@@ -540,15 +556,8 @@ class kill:
         for i in [i for i in self.kd["Participants"] if i["DamageDone"] > 0]:
             if i["Id"] in followinglists or i["GuildId"] in followinglists:
                 isassist = True
-        if (iskiller or isassist) and isvictim:
-            color = 0xae00ff
-        elif (iskiller or isassist):
-            color = 0x00ff00
-        elif isvictim:
-            color = 0xff0000
-        else:
-            color = 0x00ffff
-        localtitle, localdescription = self.title(iskiller, isvictim, isassist)
+        localtitle, localdescription, color = self.gettype(
+            iskiller, isvictim, isassist)
         # Create discord embed object
         self.embed = None
         self.embed = discordembed(
