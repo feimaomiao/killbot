@@ -8,7 +8,7 @@ import aiohttp
 
 class killboard:
 
-    def __init__(self, latest):
+    def __init__(self, latest, debugchannel=None):
         # initalise the differnce variable
         self.diff = []
         # initialise tracking guilds/alliances
@@ -21,6 +21,8 @@ class killboard:
         self.latest = latest
         # selt an old
         self.old = []
+        #adds debugchannel to class attribute
+        self.dubugchannel = debugchannel
 
     # Get a connection and download value from the gameinfo api
     @staticmethod
@@ -29,25 +31,39 @@ class killboard:
         # function that returns the proper link via string formatting
         _link = lambda x: "https://gameinfo.albiononline.com/api/gameinfo/events?limit=51&offset={}".format(
             x)
-
+        # set count to static 9 to prevent the bot from being offline too long(often blocks discord heartbear)
         count = 9 if count > 9 else count
-        # using the requests module to get a connection from the link
+        # using the aiohttp module to get a connection from the link
         # offset can be adjusted if more than 51 kills occured between updates
-        async with client.get(_link(offset)) as resp:
-            if resp.status != 200:
-                await asyncio.sleep(count)
-                print("offset: {}".format(offset))
-                logging.warning("Time: {0:20} Status Code Error: {1}".format(
-                    datetime.datetime.now().strftime("%x %X:%f"), resp.status))
-                return await killboard._connect(offset, client, count + 1)
-            return await resp.json()
+        try:
+            async with client.get(_link(offset)) as resp:
+                if resp.status != 200:
+                    # sleep count to prevent spamming
+                    await asyncio.sleep(count)
+                    logging.warning(
+                        "Time: {0:20} Status Code Error: {1}".format(
+                            datetime.datetime.now().strftime("%x %X:%f"),
+                            resp.status))
+                    # recursive of course
+                    return await killboard._connect(offset, client, count + 1)
+                # cannot use content_type = None to solve json problems or the return would be bad
+                return await resp.json()
+        except Exception as e:
+            if debugchannel:
+                await debugchannel.send(
+                    f"{debugchannel.guild.owner.mention} In _connect, {e.__class__.__name__} occured"
+                )
+            # recursion
+            return await killbot._connect(offset, client, count)
 
     @property
     def compare(self):
+        # compare is usually only used when the bot first reboots or when during system downtime (1000-1030 UTC)
         return self.new == self.old
 
     @property
     def new_values(self):
+        # Return a list of new kills that does not duplicate
         return [i for i in self.new if i not in self.old]
 
     async def load(self):
@@ -62,7 +78,9 @@ class killboard:
         print("NEW ITEMSS!!!")
         # initialise the count variable for later offsets
         count = 0
-        self.diff = self.new_values
+        self.diff = [
+            i for i in self.new_values if int(i["EventId"]) > self.latest
+        ]
         temp = self.new
         """
         to avoid repetition in the future
@@ -79,8 +97,8 @@ class killboard:
                     self.new = await self._connect(50 * count, client)
                     self.new.sort(key=lambda x: int(x["EventId"]))
                     self.diff += [
-                        i for i in self.new_values
-                        if i not in self.diff and i["EventId"] > self.latest
+                        i for i in self.new_values if (i not in self.diff) and
+                        (int(i["EventId"]) > self.latest)
                     ]
                     self.old += self.new
                     self.old.sort(key=lambda x: int(x["EventId"]))
@@ -89,14 +107,23 @@ class killboard:
                     elif (50 * count + 1) > 1000:
                         break
                 except Exception as e:
-                    print(type(e), e.message)
-        # Set old to the latest kills
-        print("Total: {}".format(len(self.diff)))
+                    try:
+                        print(e.__class__.__name__, e.args)
+                        if self.debugchannel:
+                            await debugchannel.send(
+                                f"{debugchannel.guild.owner.mention}{e.__class__.__name__} is caused by killboard.load(). Arguments include {e.args}"
+                            )
+                    except Exception as e:
+                        continue
         try:
             self.latest = max((i["EventId"] for i in self.diff))
         except ValueError:
             self.latest = self.latest
-        self.old = self.diff
+        self.old += self.diff
+        # reduces amount of memory needed.
+        if len(self.old) > 1000:
+            self.old = sorted(self.old, key=lambda x: x["EventId"])[:1000]
+        # Make sure this is a unique item
         return list({
             v["EventId"]: v
             for v in sorted(self.diff, key=lambda x: int(x["EventId"]))
@@ -140,10 +167,24 @@ class killboard:
         ] + [kill["TotalVictimKillFame"] >= self.minkillfame] +
                    [self.isassist(kill)])
 
+    # Get the new kills
     async def newkills(self):
         p = [i for i in await self.load() if self.insearch(i)]
         print(f"Total: {len(p)}")
         return p
+
+    # shows history kill
+    @staticmethod
+    async def showkill(kill):
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(
+                        f"https://gameinfo.albiononline.com/api/gameinfo/events/{kill}",
+                        headers={"Connection": "close"}) as resp:
+                    return await resp.json()
+            except Exception as e:
+                logging.warning(f"showkill exception: {e}")
+                return await killboard.showkill(kill)
 
     @staticmethod
     def inguildassist(kill, guild):

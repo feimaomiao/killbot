@@ -14,7 +14,6 @@ from time import time as timetime
 
 import aiohttp
 import requests
-from bs4 import BeautifulSoup as bs
 from discord import Embed as discordembed
 from discord import File as discordfile
 from lzl import lzfloat, lzint, lzlist
@@ -70,7 +69,7 @@ def substitute(name):
             "MOUNTAIN": "Fort Sterling"
         }[k.group(1)]
         tier = {"LIGHT": 1, "MEDIUM": 2, "HEAVY": 3}[k.group(2)]
-        return f"Tier {tier} {location}'s Unsuspicious Box"
+        return f"Tier {tier} {location}'s Faction Transport"
     elif h:
         return f"HCE Map (Lvl. {h.group(1)})"
     ls = [
@@ -81,6 +80,7 @@ def substitute(name):
     ]
     for items in ls:
         name = sub(items, "", name)
+    name = sub("Partially Full", "Half", name)
     return name
 
 
@@ -141,43 +141,50 @@ def convert_to_transparent(imageobj, transparent):
 # async function to check if itemid is a double handed weapon.
 # parameter: name -> unique key of weapon
 async def is_two_main_hand(name):
+    if name is None or name == "":
+        return False
     try:
         async with aiohttp.ClientSession(
-                connector=aiohttp.TCPConnector(verify_ssl=False),
                 headers={"Connection": "close"}) as session:
             async with session.get(
-                    "https://www.albiononline2d.com/en/item/id/{}".format(
-                        name)) as resp:
-                return {
-                    k: v for k, v in lzlist([
-                        i.string
-                        for i in bs(await resp.text(),
-                                    features="html.parser").find_all("td")
-                    ]).split_by(2)
-                }["Two Handed"] == "true"
+                    f"http://gameinfo.albiononline.com/api/gameinfo/items/{name}/data"
+            ) as resp:
+                respond = await resp.json()
+                return respond["twoHanded"]
     except Exception as e:
-        return await is_two_main_hand(name)
+        # Print error type
+        logging.warning(f"in is_two_main_hand, {e.__class__.__name__}")
+        return False
 
 
 # async function to get image from the given link
-async def get_image(link, item, session, quality=1):
+async def get_image(link, item, session, quality=1, debugchannel=None, count=0):
     async with session.get(link + item + f".png?quality={quality}") as resp:
-        # use bytesio object to load the respond conetent from online∂
-        # -> use image module to load the image from bytesio object
-        # -> resize the image object to 180x180 size
-        # -> convert the image to transparent
+        '''
+         use bytesio object to load the respond conetent from online∂
+         -> use image module to load the image from bytesio object
+         -> resize the image object to 180x180 size
+         -> convert the image to transparent
+        '''
         try:
             tobyte = BytesIO(await resp.content.read())
             tobyte.seek(0)
             return convert_to_transparent(
                 img.open(tobyte).resize((180, 180), img.ANTIALIAS), BACKGROUND)
         except Exception as e:
-            print("Image error", e, link + item)
             await asyncio.sleep(1)
-            return await get_image(link, item, session)
+            if debugchannel:
+                await debugchannel.send(
+                    debugchannel.guild.owner.mention +
+                    f"{e.__class__.__name__} in get_image. Keys include {item}, {quality}"
+                )
+            if count == 10:
+                return False
+            return await get_image(link, item, session, quality, debugchannel,
+                                   count + 1)
 
 
-async def get_iw_json(items, session, count=0):
+async def get_iw_json(items, session, count=0, sendchannel=None):
     # Lambda function to return the api link
     getlink = lambda x: "https://www.albion-online-data.com/api/v2/stats/prices/" + x
     try:
@@ -187,16 +194,24 @@ async def get_iw_json(items, session, count=0):
     except json.decoder.JSONDecodeError:
         if count == 0:
             logging.warning("Gearworth Error {}".format(items))
+            if sendchannel:
+                await sendchannel.send(sendchannel.guild.owner.mention +
+                                       f" Gearworth error for {items}")
         if count > 5:
             count = 5
         if count == 5:
             try:
                 return requests.get(getlink(items)).json()
             except Exception as e:
-                print(e)
-                return await get_iw_json(items, session, 1)
+                return await get_iw_json(items,
+                                         session,
+                                         1,
+                                         sendchannel=sendchannel)
         await asyncio.sleep(count)
-        return await get_iw_json(items, session, count + 1)
+        return await get_iw_json(items,
+                                 session,
+                                 count + 1,
+                                 sendchannel=sendchannel)
 
 
 # Function to get the average price from Lymhurst, Martlock, Bridgewatch, FortSterling and Thetford
@@ -207,18 +222,12 @@ def _getaverage(x, y):
             fnl.append(i["sell_price_min"])
     if len(fnl) == 0:
         fnl = [i["sell_price_min"] for i in x if i["sell_price_min"] != 0]
-    # when there is only one entry point
-    if len(fnl) == 1:
-        return fnl[0]
-    # when everything is 0
-    elif len(fnl) == 0:
-        return 0
-    # Use list comprehension to remove extremes from the list, also use the statistics.mean function to get averages from the data.
-    return avg([i for i in fnl if i <= 3 * avg(sorted(fnl)[:-1])])
+    return 0 if len(fnl) == 0 else fnl[0] if len(fnl) == 1 else avg(
+        [i for i in fnl if i <= 3 * avg(sorted(fnl)[:-1])])
 
 
 # determines gear worth
-async def calculate_gearworth(person, session):
+async def calculate_gearworth(person, session, debugchannel=None):
     # initialise list of inventory and total value
     loi = []
     total = 0
@@ -230,8 +239,10 @@ async def calculate_gearworth(person, session):
     # looping through items in counter
     for items, count in Counter(loi).items():
         try:
-            total += _getaverage(await get_iw_json(items[0], session),
-                                 items[1]) * count
+            total += _getaverage(
+                await get_iw_json(items[0], session, sendchannel=debugchannel),
+                items[1],
+            ) * count
         except KeyError:
             logging.info("Time: {0:20} KeyError: Item {1}".format(
                 datetime.datetime.now().strftime("%x %X:%f"), items[0]))
@@ -242,7 +253,8 @@ async def drawplayer(player,
                      kav,
                      totaldamage=0,
                      killer=True,
-                     peoplegettingfame=0):
+                     peoplegettingfame=0,
+                     debugchannel=None):
     # Base image link to load the images
     _baseimagelink = "https://render.albiononline.com/v1/item/"
 
@@ -286,7 +298,7 @@ async def drawplayer(player,
     textspace: location data for the count of the item. Usually only useful in potion slot and food slot, used to determine the count of the item.
     """
     async with aiohttp.ClientSession(
-            headers={"Connection": "close"}) as session:
+            headers={"Connection": "keep-alive"}) as session:
         # unpacks the data
         for item, imgspace, textspace in data:
             # check if the item exists
@@ -294,7 +306,10 @@ async def drawplayer(player,
                 # downloads image
                 loadingimg = await get_image(_baseimagelink,
                                              equipments[item]["Type"], session,
-                                             equipments[item]["Quality"])
+                                             equipments[item]["Quality"],
+                                             debugchannel)
+                if loadingimg == False:
+                    return False
                 # puts the image on the background using the given data
                 playerimg.paste(loadingimg, imgspace)
                 # put the count on the pasted image using the given data
@@ -305,7 +320,7 @@ async def drawplayer(player,
     # Check if user is using a two-handed weapon
     try:
         twohand = await is_two_main_hand(equipments["MainHand"]["Type"])
-    except Exception as e:
+    except (AttributeError, TypeError) as e:
         twohand = False
 
     if twohand and equipments["MainHand"]:
@@ -313,10 +328,12 @@ async def drawplayer(player,
         async with aiohttp.ClientSession(
                 headers={"Connection": "close"}) as session:
             content = await get_image(_baseimagelink,
-                                      equipments["MainHand"]["Type"], session,
-                                      equipments["MainHand"]["Count"])
+                                      equipments["MainHand"]["Type"],
+                                      session,
+                                      equipments["MainHand"]["Count"],
+                                      debugchannel=debugchannel)
+            # make the image transparent
             content.putalpha(100)
-        # make the image transparent
         playerimg.paste(content, (400, 380))
         # provides the count
         drawimg.text((533, 490),
@@ -326,7 +343,7 @@ async def drawplayer(player,
     # Calculate their gear worth
     async with aiohttp.ClientSession(
             headers={"Connection": "close"}) as session:
-        gearworth = await calculate_gearworth(player, session)
+        gearworth = await calculate_gearworth(player, session, debugchannel)
     # Set IP
     width, height = drawimg.textsize("IP: {}".format(
         round(player["AverageItemPower"], 2)),
@@ -363,11 +380,12 @@ async def drawplayer(player,
 
 class kill:
 
-    def __init__(self, kd):
+    def __init__(self, kd, debugchannel=None):
         """
         Usage: 
         variable = kill(kill json item)
         """
+        self.debugchannel = debugchannel
         self.starttime = timetime()
         kd = dc(kd)
         self.kd = kd
@@ -445,23 +463,32 @@ class kill:
     # Function to draw a whole set of gear on a blank template
     async def draw(self):
         background = img.new("RGBA", (1800, 1200), BACKGROUND)
-        # load pictures for each player
-        killer_pic = await drawplayer(self.killer,
-                                      "Killer",
-                                      totaldamage=self.totaldamage,
-                                      killer=True)
-        victim_pic = await drawplayer(self.victim,
-                                      "Victim",
-                                      killer=False,
-                                      peoplegettingfame=self.peoplegettingfame)
+        killer_pic = False
+        victim_pic = False
+        while int(bool(killer_pic)) + int(bool(victim_pic)) < 2:
+            # load pictures for each player
+            killer_pic = await drawplayer(self.killer,
+                                          "Killer",
+                                          totaldamage=self.totaldamage,
+                                          killer=True,
+                                          debugchannel=self.debugchannel)
+            victim_pic = await drawplayer(
+                self.victim,
+                "Victim",
+                killer=False,
+                peoplegettingfame=self.peoplegettingfame,
+                debugchannel=self.debugchannel)
         if self.solokill:
             background.paste(killer_pic, (150, 0))
             background.paste(victim_pic, (1050, 0))
         else:
-            assist_pic = await drawplayer(self.assist,
-                                          "Assist",
-                                          killer=True,
-                                          totaldamage=self.totaldamage)
+            assist_pic = False
+            while bool(assist_pic) != True:
+                assist_pic = await drawplayer(self.assist,
+                                              "Assist",
+                                              killer=True,
+                                              totaldamage=self.totaldamage,
+                                              debugchannel=self.debugchannel)
             background.paste(killer_pic, (0, 0))
             background.paste(assist_pic, (600, 0))
             background.paste(victim_pic, (1200, 0))
@@ -470,7 +497,8 @@ class kill:
         # returns gear worth
         async with aiohttp.ClientSession(
             headers={"Connection": "close"}) as session:
-            self.gw = round(await calculate_gearworth(self.victim, session))
+            self.gw = round(await calculate_gearworth(self.victim, session,
+                                                      self.debugchannel))
         self.inv = await self.inventory()
         return background
 
@@ -529,8 +557,11 @@ class kill:
         async with aiohttp.ClientSession(
                 headers={"Connection": "close"}) as session:
             for i in [j for j in self.victim["Inventory"] if j is not None]:
-                itemworth = _getaverage(await get_iw_json(i["Type"], session),
-                                        i["Quality"])
+                itemworth = _getaverage(
+                    await get_iw_json(i["Type"],
+                                      session,
+                                      sendchannel=self.debugchannel),
+                    i["Quality"])
                 stuff.append(
                     (items_get(i["Type"],
                                i["Quality"]), int(i["Count"]), int(itemworth)))
@@ -604,9 +635,8 @@ class kill:
                              value="{:,}".format(self.gw),
                              inline=False)
         '''
-        returns three items: 
+        returns two items: 
         self.embed: the embed file to be sent
         self.file: the file object that has to be sent together with the embed 
-        self.fileloc: the file location that would later delete the original file.
         '''
-        return (self.embed, self.file, self.fileloc)
+        return (self.embed, self.file)

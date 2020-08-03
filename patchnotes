@@ -1,6 +1,7 @@
-Hello! Killbot is just updated to `v2.2.5`.
+Hello! Killbot is just updated to `v2.3.20`.
+Here are the update logs:
 ```
-•	Some minor updates to prevent the possible `OSError`
+•	Fixing a message send error
 ```
 
 - feimao[Daddy of killbot] :cat:

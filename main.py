@@ -3,8 +3,8 @@ import datetime
 import difflib
 import json
 import logging
-import re
 import os
+import re
 from copy import deepcopy as dc
 from hashlib import sha256
 from os.path import isfile
@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 JSONLINK = os.getenv("JSONLINK")
+DEBUGCHANNELID = os.getenv("DEBUGCHANNEL")
+DEBUGCHANNEL = None
 
 logging.basicConfig(level=logging.INFO)
 bot = commands.Bot(command_prefix=commands.when_mentioned_or('>'),
@@ -35,13 +37,11 @@ configs = dc({
     for k, v in configsonline.items()
     if k not in ("_id", "_createdOn", "latest_eventid")
 })
-global last_id
-global latest_eventid
-global followingparties
-global sendupdate
 sendupdate = True
 last_id = configsonline["_id"]
 latest_eventid = configsonline["latest_eventid"]
+botup = True
+errortype = None
 kb = killboard(latest_eventid)
 with open("default_cfg_template.json") as defcfgfile:
     defaultconfigs = json.load(defcfgfile)
@@ -50,14 +50,20 @@ followingparties = configs["GENERAL"]["trackingguild"] + configs["GENERAL"][
 with open("patchnotes") as patchnotesfile:
     patchnotes = patchnotesfile.read()
     shakey = sha256(patchnotes.encode()).hexdigest()
-    __version__ = re.match(r".*v(\d\.\d\.\db{0,1}).*", patchnotes,re.MULTILINE).group(1)
+    __version__ = re.match(r".*v(\d\.\d\.\d{1,2}b{0,1}).*", patchnotes,
+                           re.MULTILINE).group(1)
 
 
 @bot.event
 async def on_ready():
+    global shakey
+    global DEBUGCHANNEL
     await bot.change_presence(activity=discord.Activity(
         type=discord.ActivityType.watching, name="the killboard"))
-    print(f"UPDATE LOG Hash: {shakey}")
+    DEBUGCHANNEL = discord.utils.find(lambda x: x.id == int(DEBUGCHANNELID),
+                                      bot.get_all_channels())
+    await DEBUGCHANNEL.send(DEBUGCHANNEL.guild.owner.mention +
+                            " Bot is just restarted.")
 
 
 @bot.command(name="update")
@@ -79,6 +85,7 @@ async def updatedmessage(client, key=None):
         except AttributeError:
             continue
     sendupdate = False
+    await client.send("Message sent.")
     return
 
 
@@ -91,22 +98,30 @@ async def getkey(client, version=None):
 
 
 # set loop to 150 seconds per update
-@tasks.loop(seconds=150)
+@tasks.loop(seconds=100)
 async def loadimages():
+    global kb
+    global DEBUGCHANNEL
+    global botup
+    global errortype
+    botup = True
+    errortype = None
+    k = None
     try:
         for kills in await kb.newkills():
-            k = kill(kills)
+            k = kill(kills, DEBUGCHANNEL)
             await k.draw()
+            print(k.eventid, end=" ")
             # loop through guilds
-            embedder, fileobj, fileloc = None, None, None
+            embedder, fileobj = None, None
             for guilds in [c for c in configs if c != "GENERAL"]:
                 if configs[guilds]["sendchannel"] == 0:
                     continue
                 if kb.qualify(configs[guilds], dc(kills)):
-                    embedder, fileobj, fileloc = k.create_embed(
+                    embedder, fileobj = k.create_embed(
                         configs[guilds]["trackingplayer"] +
                         configs[guilds]["trackingguild"])
-                    while not isfile(fileloc):
+                    while not isfile(k.fileloc):
                         await k.draw()
                     # load send channel
                     channel = discord.utils.find(
@@ -115,22 +130,42 @@ async def loadimages():
                     if not channel:
                         continue
                     await channel.trigger_typing()
-                    await channel.send(file=fileobj, embed=embedder)
+                    count = 0
+                    while True:
+                        try:
+                            await channel.send(file=fileobj, embed=embedder)
+                            break
+                        except discord.errors.HTTPException:
+                            continue
+                        except Exception as e:
+                            raise
             # Deletes file
             try:
-                print(
-                    f"{k.eventid} deleted: {round(timetime()-k.starttime,3)} seconds used"
-                )
-                os.remove(fileloc if fileloc != None else k.fileloc)
+                # file still exists, channel si not set if fileloc is None
+                os.remove(k.fileloc)
             except Exception as e:
-                print(e)
+                await DEBUGCHANNEL.send(
+                    f"{DEBUGCHANNEL.guild.owner.mention} {e.__class__.__name__} in kill {k.eventid}\nCaused by `{k.args[0]}`"
+                )
+                botup = False
                 continue
+            print(round(timetime() - k.starttime, 3))
             del k
         generalconfigs()
         print("Finished")
         return
     except Exception as e:
-        print(type(e), e)
+        botup = False
+        errortype = str(e.__class__.__name__)
+        logging.warning(f"{e.__class__.__name__}", exc_info=True)
+        try:
+            await DEBUGCHANNEL.send(
+                f"{DEBUGCHANNEL.guild.owner.mention} {e.__class__.__name__} in kill {k.eventid}\nCaused by `{e.args[0]}`"
+            )
+        except:
+            await DEBUGCHANNEL.send(
+                f"{DEBUGCHANNEL.guild.owner.mention} {e.__class__.__name__} is caused by unknnown error"
+            )
 
 
 # Send help
@@ -140,15 +175,15 @@ async def help(client):
 ```Commands for killbot:
 Prefix: [>]
 
-help:                           Sends this message
+help:                           tends this message
 
-track (guild|player) name       Tracks and sends a kill by the given guild/player [killer/victim]
+track (guild|player) name       tracks and sends a kill by the given guild/player [killer/victim]
 ! May take some time as the server has to search for new values
 for example: 
 ">track player feimaomiao"
-">track elevate"
+">track guild elevate"
 
-untrack (guild|player) name     Stops tracking that guild/player anymore
+untrack (guild|player) name:    stops tracking that guild/player
 ! May take some time as the server has to search for new values
 for example:
 ">untrack player feimaomiao"
@@ -159,7 +194,18 @@ for example:
 ">minfame 1000000"
 
 list:                           list all currently tracking players and the guilds
-">list"
+for example"
+
+show:                           shows a past kill based on the kill id
+! May take some time to digest the information
+for example:
+">show 99258251"
+
+up?:                            tells you if the killbot is down from unexpected errors
+
+colorcode:                      tells you the color pallete and its meanings
+
+uptime:                         tells you for how long the bot is up.
 ```"""
     await client.send(string)
 
@@ -167,6 +213,7 @@ list:                           list all currently tracking players and the guil
 # When the bot joins a guild
 @bot.event
 async def on_guild_join(guild=None):
+    global configs
     # deepcopy because it if not its going to make copies and send more than one more time in one guild
     configs.update({"a" + str(guild.id): dc(defaultconfigs)})
     # Log join guild
@@ -185,6 +232,7 @@ async def on_guild_join(guild=None):
 # When guild is removed
 @bot.event
 async def on_guild_remove(guild=None):
+    global configs
     # delete guild info
     del configs["a" + str(guild.id)]
     logging.info("Left guild {} at {}".format(
@@ -348,6 +396,7 @@ async def setminfame(client, fame, *others):
 # load general configurations
 def generalconfigs():
     global followingparties
+    global configs
     # Makes the following key unique
     for k, v in configs.items():
         if k == "GENERAL":
@@ -355,18 +404,22 @@ def generalconfigs():
         for key, value in v.items():
             if type(value) != list:
                 continue
-            v[key] = lzlist(value).unique
+            v[key] = sorted(lzlist(value).unique, key=lambda x: x[0].lower())
     # Add a list of total tracking guild.
-    configs["GENERAL"]["trackingguild"] = list(
-        set(
-            lzlist(i["trackingguild"]
-                   for i in [v for k, v in configs.items()
-                             if k != "GENERAL"]).join_all()))
-    configs["GENERAL"]["trackingplayer"] = list(
-        set(
-            lzlist(i["trackingplayer"]
-                   for i in [v for k, v in configs.items()
-                             if k != "GENERAL"]).join_all()))
+    configs["GENERAL"]["trackingguild"] = sorted(
+        list(
+            set(
+                lzlist(
+                    i["trackingguild"]
+                    for i in [v for k, v in configs.items()
+                              if k != "GENERAL"]).join_all())))
+    configs["GENERAL"]["trackingplayer"] = sorted(
+        list(
+            set(
+                lzlist(
+                    i["trackingplayer"]
+                    for i in [v for k, v in configs.items()
+                              if k != "GENERAL"]).join_all())))
     # get the smallest kill fame in all guilds
     try:
         configs["GENERAL"]["minimumkillfame"] = min([
@@ -404,6 +457,19 @@ async def uptime(client):
     await client.send("uptime: " + str(timediff))
 
 
+@bot.command(name="show")
+async def showkill(client, key):
+    # Get json and convert to kill object
+    killobj = kill(await kb.showkill(key))
+    await killobj.draw()
+    trackinglist = configs[f"a{client.guild.id}"]["trackingguild"] + configs[
+        f"a{client.guild.id}"]["trackingplayer"]
+    embedobj, fileobj = killobj.create_embed(trackinglist)
+    await client.send(file=fileobj, embed=embedobj)
+    os.remove(killobj.fileloc)
+    return
+
+
 @bot.command(name="colorcode")
 async def colorcode(client):
     string = f"""```\
@@ -415,6 +481,22 @@ async def colorcode(client):
 #FA77AA (Pink)      : When the kill estimated worth is over 2.5 Million
 ```"""
     await client.send(string)
+
+
+@bot.command(name="up?")
+async def botisup(client):
+    global botup
+    global errortype
+    return await client.send(
+        "Bot is up" if botup else
+        f"Bot is down from {errortype}, please dm feimaomiao#2956 for killbot support. Thank you. :cat:"
+    )
+
+
+@bot.command(name="version")
+async def selfversion(client):
+    global __version__
+    return await client.send(__version__)
 
 
 generalconfigs()
