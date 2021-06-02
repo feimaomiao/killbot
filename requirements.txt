@@ -11,6 +11,6 @@ multidict==4.7.6
 Pillow==7.1.2
 python-dotenv==0.13.0
 requests==2.23.0
-urllib3==1.25.9
+urllib3==1.26.5
 websockets==8.1
 yarl==1.4.2
